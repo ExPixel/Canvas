@@ -32,7 +32,7 @@ pub struct Context {
     /// Final transform applied to each vertex to convert from the screen's coordinates to
     /// device coordinates.
     ortho_matrix: Mat4f,
-    transform: Decomposed2f,
+    transform: ViewTransform,
 }
 
 impl Context {
@@ -53,8 +53,7 @@ impl Context {
         vertex_buffer.bind();
 
         unsafe {
-            let szfloat = std::mem::size_of::<f32>() as i32;
-            gl::EnableVertexAttribArray(attrib_pos as _);
+            let szfloat = std::mem::size_of::<f32>() as i32; gl::EnableVertexAttribArray(attrib_pos as _);
             gl::VertexAttribPointer(attrib_pos as _, 2, gl::FLOAT, gl::FALSE, 6 * szfloat, std::mem::transmute(0usize));
             gl::EnableVertexAttribArray(attrib_col as _);
             gl::VertexAttribPointer(attrib_col as _, 4, gl::FLOAT, gl::FALSE, 6 * szfloat, std::mem::transmute(2 * szfloat as usize));
@@ -76,7 +75,7 @@ impl Context {
             elements:       Vec::with_capacity(MAX_ELEMS),
 
             ortho_matrix:   cgmath::ortho(-1.0, 1.0, -1.0, 1.0, 0.0, 1.0),
-            transform:      decomposed2f(1.0, 0.0, vec2f(0.0, 0.0)),
+            transform:      ViewTransform::zero(),
         }
     }
 
@@ -106,8 +105,8 @@ impl Context {
 
         unsafe {
             gl::UniformMatrix4fv(self.uniform_projmtx, 1, gl::FALSE, self.ortho_matrix.as_ptr());
-            let transform_mtx: Mat3f = self.transform.into();
-            gl::UniformMatrix3fv(self.uniform_transform, 1, gl::FALSE, transform_mtx.as_ptr());
+            let transform_mtx = self.transform.matrix();
+            gl::UniformMatrix4fv(self.uniform_transform, 1, gl::FALSE, transform_mtx.as_ptr());
         }
 
         self.vertex_array.bind();
@@ -122,6 +121,11 @@ impl Context {
 
         self.vertices.clear();
         self.elements.clear();
+    }
+
+    #[inline]
+    pub fn has_vertices(&self) -> bool {
+        self.vertices.len() > 0
     }
 
     pub fn set_clear_color(&self, color: Color) {
@@ -165,6 +169,61 @@ impl Context {
 
     pub fn set_display_size(&mut self, width: f32, height: f32) {
         self.ortho_matrix = cgmath::ortho(0.0, width, height, 0.0, -1.0, 1.0);
+    }
+
+    fn set_transform(&mut self, transform: ViewTransform) {
+        if self.has_vertices() {
+            self.flush_verts();
+        }
+        self.transform = transform;
+    }
+
+    /// Set origin for affine transformations.
+    pub fn set_origin(&mut self, ox: f32, oy: f32) {
+        self.set_transform(self.transform.with_origin(vec2f(ox, oy)));
+    }
+
+    pub fn set_rotation(&mut self, rotation: f32) {
+        self.set_transform(self.transform.with_rotation(rotation));
+    }
+
+    pub fn set_rotation_deg(&mut self, rotation_deg: f32) {
+        self.set_transform(self.transform.with_rotation(deg2rad_h(rotation_deg)));
+    }
+}
+
+struct ViewTransform {
+    origin:     Vec2f,
+    rotation:   f32,
+}
+
+impl ViewTransform {
+    pub fn matrix(&self) -> Mat4f {
+        let t0 = transform::translate(-self.origin.x, -self.origin.y);
+        let t1 = transform::rotation(self.rotation);
+        let t2 = transform::translate(self.origin.x, self.origin.y);
+        transform::merge_all(&[t0, t1, t2])
+    }
+
+    pub fn zero() -> ViewTransform {
+        ViewTransform {
+            origin:     vec2f(0.0, 0.0),
+            rotation:   0.0,
+        }
+    }
+
+    pub fn with_rotation(&self, rotation: f32) -> ViewTransform {
+        ViewTransform {
+            rotation: rotation,
+            ..*self
+        }
+    }
+
+    pub fn with_origin(&self, origin: Vec2f) -> ViewTransform {
+        ViewTransform {
+            origin: origin,
+            ..*self
+        }
     }
 }
 
@@ -236,7 +295,7 @@ impl super::opengl::BufferDataType for Vert {}
 pub const VERTEX_SHADER: &str   = "\
 #version 130
 
-uniform mat3 Transform;
+uniform mat4 Transform;
 uniform mat4 ProjMtx;
 in  vec2 Position;
 in  vec4 Color;
@@ -244,9 +303,8 @@ out vec4 FragColor;
 
 void main() {
     FragColor = Color;
-    vec3 t = Transform * vec3(Position.xy, 1.0);
-    vec4 pos = vec4(t.xy, 1.0, 1.0);
-    gl_Position = ProjMtx * pos;
+    vec4 t = ProjMtx * Transform * vec4(Position.xy, 1.0, 1.0);
+    gl_Position = t;
 }\0";
 
 pub const FRAGMENT_SHADER: &str = "\

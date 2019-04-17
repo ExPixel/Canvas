@@ -9,7 +9,7 @@ pub struct Window {
     win_context: WindowedContext,
     is_running: bool,
 
-    size: (f32, f32),
+    win_size: (f32, f32),
 }
 
 impl Window {
@@ -32,7 +32,7 @@ impl Window {
             win_context: windowed_context,
 
             is_running: true,
-            size: (width as _, height as _),
+            win_size: (width as _, height as _),
         }
     }
 
@@ -64,7 +64,7 @@ impl Window {
                 let dpi_factor = self.win_context.get_hidpi_factor();
                 let physical_size = logical_size.to_physical(dpi_factor);
                 self.win_context.resize(physical_size);
-                self.size = (physical_size.width as _, physical_size.height as _);
+                self.win_size = (physical_size.width as _, physical_size.height as _);
                 unsafe {
                     gl::Viewport(0, 0, physical_size.width as _, physical_size.height as _);
                 }
@@ -78,10 +78,18 @@ impl Window {
     }
 
     pub fn width(&self) -> f32 {
-        self.size.0
+        self.win_size.0
     }
 
     pub fn height(&self) -> f32 {
-        self.size.1
+        self.win_size.1
+    }
+
+    pub fn center_x(&self) -> f32 {
+        self.win_size.0 / 2.0
+    }
+
+    pub fn center_y(&self) -> f32 {
+        self.win_size.1 / 2.0
     }
 }
