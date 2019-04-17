@@ -1,0 +1,10 @@
+[package]
+name = "canvas"
+version = "0.1.0"
+authors = ["ExPixel <adolphc@outlook.com>"]
+edition = "2018"
+
+[dependencies]
+gl = "0.11"
+cgmath = "0.17"
+glutin = "0.20"
